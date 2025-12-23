@@ -1,0 +1,15 @@
+[phases.setup]
+nixPkgs = ["nodejs-18_x", "glib", "nss", "nspr", "atk", "at-spi2-atk", "cups", "drm", "dbus", "libxkbcommon", "libxcomposite", "libxdamage", "libxfixes", "libxrandr", "mesa", "alsa-lib", "pango", "cairo", "gtk3"]
+
+[phases.install]
+cmds = [
+  "npm ci",
+  "npx playwright install chromium"
+]
+
+[phases.build]
+cmds = []
+
+[start]
+cmd = "node server.js"
+
