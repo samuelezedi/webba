@@ -142,6 +142,41 @@
         .instructions li {
             margin: 8px 0;
         }
+
+        .browser-view {
+            padding: 30px;
+            background: #1a1a1a;
+            border-radius: 8px;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .browser-view img {
+            max-width: 100%;
+            border: 2px solid #333;
+            border-radius: 4px;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .browser-view p {
+            color: #fff;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .browser-controls {
+            margin-top: 15px;
+            padding: 15px;
+            background: #2a2a2a;
+            border-radius: 4px;
+        }
+
+        .browser-controls p {
+            color: #aaa;
+            font-size: 12px;
+            margin: 0;
+        }
     </style>
 </head>
 <body>
@@ -165,11 +200,19 @@
 
         <div class="browser-info">
             <h2>Browser Window</h2>
-            <p>A browser window has been opened automatically. You can see the automation process happening in that window.</p>
+            <p id="browserDescription">A browser window has been opened automatically. You can see the automation process happening in that window.</p>
+
+            <div class="browser-view" id="browserView" style="display: none;">
+                <p>🖥️ Live Browser View (Click anywhere to interact)</p>
+                <img id="browserScreenshot" src="" alt="Browser view" />
+                <div class="browser-controls">
+                    <p>💡 Click on the image above to interact with the browser</p>
+                </div>
+            </div>
 
             <div class="instructions" id="instructions" style="display: none;">
                 <h3>📋 Next Steps</h3>
-                <ul>
+                <ul id="instructionsList">
                     <li>Look for the browser window that opened automatically</li>
                     <li>The automation has completed the login and form filling</li>
                     <li>You should now see the face verification page</li>
@@ -187,11 +230,19 @@
         const infoTitle = document.getElementById('infoTitle');
         const infoText = document.getElementById('infoText');
         const instructions = document.getElementById('instructions');
+        const browserView = document.getElementById('browserView');
+        const browserScreenshot = document.getElementById('browserScreenshot');
+        const browserDescription = document.getElementById('browserDescription');
+        const instructionsList = document.getElementById('instructionsList');
+        // Get sessionId from URL or generate one
+        const urlParams = new URLSearchParams(window.location.search);
+        let currentSessionId = urlParams.get('sessionId') || null;
 
         socket.on('status', (data) => {
             console.log('Status update:', data);
             
-            const { status, message } = data;
+            const { status, message, sessionId } = data;
+            if (sessionId) currentSessionId = sessionId;
             
             // Update status message
             statusMessage.textContent = message;
@@ -215,6 +266,11 @@
                     infoTitle.textContent = '✅ Ready for Face Capture';
                     infoText.textContent = 'The browser automation has completed successfully. The browser window is now ready for you to proceed with face capture.';
                     instructions.style.display = 'block';
+                    // Update instructions for headless mode
+                    if (browserView.style.display !== 'none') {
+                        instructionsList.innerHTML = '<li>Click on the browser view above to interact</li><li>Proceed with face capture by clicking the appropriate buttons</li>';
+                        browserDescription.textContent = 'Browser is running in headless mode. Interact with it using the view below.';
+                    }
                     break;
                     
                 case 'error':
@@ -224,6 +280,35 @@
                     infoText.textContent = message;
                     break;
             }
+        });
+
+        // Handle browser screenshots (for headless mode)
+        socket.on('browser-screenshot', (data) => {
+            if (data.sessionId === currentSessionId && data.image) {
+                browserScreenshot.src = 'data:image/png;base64,' + data.image;
+                browserView.style.display = 'block';
+            }
+        });
+
+        // Handle clicks on browser screenshot
+        browserScreenshot.addEventListener('click', (e) => {
+            if (!currentSessionId) return;
+            
+            const rect = browserScreenshot.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            // Calculate actual coordinates (account for image scaling)
+            const scaleX = browserScreenshot.naturalWidth / rect.width;
+            const scaleY = browserScreenshot.naturalHeight / rect.height;
+            const actualX = Math.floor(x * scaleX);
+            const actualY = Math.floor(y * scaleY);
+            
+            socket.emit('browser-click', {
+                sessionId: currentSessionId,
+                x: actualX,
+                y: actualY
+            });
         });
 
         // Handle connection

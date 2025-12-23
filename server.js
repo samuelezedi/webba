@@ -50,14 +50,7 @@ app.get('/operate', async (req, res) => {
   }, 1000);
 });
 
-// WebSocket connection handler
-io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
-
-  socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
-  });
-});
+// WebSocket connection handler (moved below - see browser interaction handlers)
 
 // Automation function
 async function startAutomation(sessionId, email, password, fileNumber) {
@@ -72,11 +65,16 @@ async function startAutomation(sessionId, email, password, fileNumber) {
       message: 'Launching browser...' 
     });
 
-    // Launch browser - use headless mode in production/cloud, visible locally
-    const isHeadless = process.env.HEADLESS === 'true' || process.env.NODE_ENV === 'production';
+    // Launch browser - use headless on cloud, visible locally
+    const isCloud = process.env.RAILWAY_ENVIRONMENT || 
+                   process.env.RENDER || 
+                   process.env.FLY_APP_NAME ||
+                   process.env.NODE_ENV === 'production';
+    const isHeadless = isCloud || process.env.HEADLESS === 'true';
+    
     browser = await chromium.launch({ 
       headless: isHeadless,
-      args: isHeadless ? [] : ['--start-maximized']
+      args: isHeadless ? ['--no-sandbox', '--disable-setuid-sandbox'] : ['--start-maximized']
     });
 
     const context = await browser.newContext({
@@ -180,6 +178,11 @@ async function startAutomation(sessionId, email, password, fileNumber) {
       message: 'Browser is ready! Please proceed with face capture in the browser window.' 
     });
 
+    // Start streaming browser screenshots if headless
+    if (isHeadless) {
+      startBrowserStreaming(sessionId, page);
+    }
+
     // Keep browser open for user interaction
     // Browser will remain open until user closes it or session times out
 
@@ -199,13 +202,87 @@ async function startAutomation(sessionId, email, password, fileNumber) {
   }
 }
 
+// Stream browser screenshots for headless mode
+async function startBrowserStreaming(sessionId, page) {
+  const streamInterval = setInterval(async () => {
+    try {
+      const session = activeSessions.get(sessionId);
+      if (!session || !session.page) {
+        clearInterval(streamInterval);
+        return;
+      }
+
+      // Take screenshot
+      const screenshot = await page.screenshot({ 
+        type: 'png',
+        fullPage: false 
+      });
+      
+      // Send via WebSocket
+      io.emit('browser-screenshot', {
+        sessionId,
+        image: screenshot.toString('base64')
+      });
+    } catch (error) {
+      console.error('Screenshot error:', error);
+      clearInterval(streamInterval);
+    }
+  }, 500); // Update every 500ms
+
+  // Store interval for cleanup
+  const session = activeSessions.get(sessionId);
+  if (session) {
+    session.streamInterval = streamInterval;
+  }
+}
+
+// Handle browser interactions (clicks, typing)
+io.on('connection', (socket) => {
+  console.log('Client connected:', socket.id);
+
+  socket.on('browser-click', async (data) => {
+    const { sessionId, x, y } = data;
+    const session = activeSessions.get(sessionId);
+    
+    if (session && session.page) {
+      try {
+        await session.page.mouse.click(x, y);
+      } catch (error) {
+        console.error('Click error:', error);
+      }
+    }
+  });
+
+  socket.on('browser-type', async (data) => {
+    const { sessionId, text } = data;
+    const session = activeSessions.get(sessionId);
+    
+    if (session && session.page) {
+      try {
+        await session.page.keyboard.type(text);
+      } catch (error) {
+        console.error('Type error:', error);
+      }
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
+  });
+});
+
 // Cleanup endpoint (optional)
 app.get('/cleanup/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
   const session = activeSessions.get(sessionId);
   
-  if (session && session.browser) {
-    await session.browser.close();
+  if (session) {
+    if (session.streamInterval) {
+      clearInterval(session.streamInterval);
+    }
+    if (session.browser) {
+      await session.browser.close();
+    }
     activeSessions.delete(sessionId);
     res.json({ success: true, message: 'Session cleaned up' });
   } else {
