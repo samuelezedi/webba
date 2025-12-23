@@ -66,11 +66,12 @@ async function startAutomation(sessionId, email, password, fileNumber) {
     });
 
     // Launch browser - use headless on cloud, visible locally
-    const isCloud = process.env.RAILWAY_ENVIRONMENT || 
-                   process.env.RENDER || 
-                   process.env.FLY_APP_NAME ||
-                   process.env.NODE_ENV === 'production';
-    const isHeadless = isCloud || process.env.HEADLESS === 'true';
+    const isCloud = !!(process.env.RAILWAY_ENVIRONMENT || 
+                      process.env.RENDER || 
+                      process.env.FLY_APP_NAME ||
+                      process.env.NODE_ENV === 'production');
+    // Ensure isHeadless is always a boolean
+    const isHeadless = Boolean(isCloud || process.env.HEADLESS === 'true');
     
     browser = await chromium.launch({ 
       headless: isHeadless,
