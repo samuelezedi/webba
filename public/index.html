@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Automation Operator</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .status-panel {
+            padding: 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .status-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #ccc;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.active {
+            background: #4caf50;
+        }
+
+        .status-dot.error {
+            background: #f44336;
+            animation: none;
+        }
+
+        .status-dot.ready {
+            background: #2196f3;
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-message {
+            font-size: 18px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 4px;
+        }
+
+        .info-box h3 {
+            color: #1976d2;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .info-box p {
+            color: #555;
+            line-height: 1.6;
+        }
+
+        .browser-info {
+            padding: 30px;
+        }
+
+        .browser-info h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 22px;
+        }
+
+        .browser-info p {
+            color: #666;
+            line-height: 1.8;
+            font-size: 16px;
+        }
+
+        .instructions {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 20px;
+            margin-top: 20px;
+            border-radius: 4px;
+        }
+
+        .instructions h3 {
+            color: #f57c00;
+            margin-bottom: 10px;
+        }
+
+        .instructions ul {
+            margin-left: 20px;
+            color: #666;
+        }
+
+        .instructions li {
+            margin: 8px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 Web Automation Operator</h1>
+            <p>Automated browser session in progress</p>
+        </div>
+
+        <div class="status-panel">
+            <div class="status-indicator">
+                <div class="status-dot" id="statusDot"></div>
+                <div class="status-message" id="statusMessage">Initializing...</div>
+            </div>
+
+            <div class="info-box" id="infoBox" style="display: none;">
+                <h3 id="infoTitle"></h3>
+                <p id="infoText"></p>
+            </div>
+        </div>
+
+        <div class="browser-info">
+            <h2>Browser Window</h2>
+            <p>A browser window has been opened automatically. You can see the automation process happening in that window.</p>
+
+            <div class="instructions" id="instructions" style="display: none;">
+                <h3>📋 Next Steps</h3>
+                <ul>
+                    <li>Look for the browser window that opened automatically</li>
+                    <li>The automation has completed the login and form filling</li>
+                    <li>You should now see the face verification page</li>
+                    <li>Please proceed with the face capture in the browser window</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const statusDot = document.getElementById('statusDot');
+        const statusMessage = document.getElementById('statusMessage');
+        const infoBox = document.getElementById('infoBox');
+        const infoTitle = document.getElementById('infoTitle');
+        const infoText = document.getElementById('infoText');
+        const instructions = document.getElementById('instructions');
+
+        socket.on('status', (data) => {
+            console.log('Status update:', data);
+            
+            const { status, message } = data;
+            
+            // Update status message
+            statusMessage.textContent = message;
+            
+            // Update status dot
+            statusDot.className = 'status-dot';
+            
+            switch(status) {
+                case 'starting':
+                case 'navigating':
+                case 'filling':
+                case 'logging_in':
+                case 'clicking':
+                    statusDot.classList.add('active');
+                    infoBox.style.display = 'none';
+                    break;
+                    
+                case 'ready':
+                    statusDot.classList.add('ready');
+                    infoBox.style.display = 'block';
+                    infoTitle.textContent = '✅ Ready for Face Capture';
+                    infoText.textContent = 'The browser automation has completed successfully. The browser window is now ready for you to proceed with face capture.';
+                    instructions.style.display = 'block';
+                    break;
+                    
+                case 'error':
+                    statusDot.classList.add('error');
+                    infoBox.style.display = 'block';
+                    infoTitle.textContent = '❌ Error Occurred';
+                    infoText.textContent = message;
+                    break;
+            }
+        });
+
+        // Handle connection
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            statusMessage.textContent = 'Connected. Starting automation...';
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Disconnected from server');
+            statusMessage.textContent = 'Connection lost. Please refresh the page.';
+            statusDot.classList.remove('active', 'ready');
+            statusDot.classList.add('error');
+        });
+    </script>
+</body>
+</html>
+
